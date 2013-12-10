@@ -158,7 +158,11 @@ TradingMethod.prototype.advice = function() {
 
     if(this.currentTrend !== 'up') {
       this.currentTrend = 'up';
-      this.emit('advice', 'BUY', price, message);
+      if (diff > settings.neverBuyAbove) {
+       log.debug("We are already too late so we don't buy anymore");
+       this.emit('advice', 'HOLD', price, message);
+      } else
+       this.emit('advice', 'BUY', price, message);
     } else
       this.emit('advice', 'HOLD', price, message);
 
