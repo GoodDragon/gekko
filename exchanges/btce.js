@@ -5,6 +5,10 @@ var util = require('../util');
 var _ = require('lodash');
 var log = require('../log')
 
+var nedb = require('nedb');
+var async = require('async');
+var db = new nedb({filename: 'btce.db', autoload: true});
+
 var Trader = function(config) {
   this.key = config.key;
   this.secret = config.secret;
@@ -14,6 +18,74 @@ var Trader = function(config) {
   _.bindAll(this);
 
   this.btce = new BTCE(this.key, this.secret);
+}
+
+Trader.prototype.Trades = function(pair, callback) {
+  var self = this;  
+  self.btce.makePublicApiRequest(pair, 'trades/2000', callback);
+};
+
+Trader.prototype.getTrades = function(since, callback, descending) {
+  var self = this;
+  var last_tid = next_tid = 0;
+
+  var args = _.toArray(arguments);
+
+  // FIXME:  fetching and updating our db shall be done in an seperate
+  // thread (timeout-callback) rather than here.  This method shall
+  // only fetch and return from local db.
+
+  async.waterfall([
+    function(callback) {
+      db.find({}, function(err, docs) {
+        if(!docs || docs.length === 0) {
+          tid = 1 + _.max(docs, 'tid').tid;
+         } 
+        log.debug(self.name, 'fetching from tid ' + tid);
+        
+	//FIXME: Some reason pair didn't work so now it is hardcoded here  
+	self.Trades('btc_usd',
+          function(err, trades) {
+            if(err || !trades || trades.length === 0)
+              // return self.retry(self.getTrades, args);
+              return self.retry(self.getTrades, callback);
+            else if('error' in trades)
+              throw 'Error from btce: ' + trades.error
+            else {
+              trades = trades.reverse();
+              _.forEach(trades, function(trade) {
+                // convert to int
+                trade.amount = Number(trade.amount);
+                trade.price = Number(trade.price);
+                trade.tid = Number(trade.tid);
+                trade.date = Number(trade.date);
+                db.insert(trade);
+              });
+            }
+            callback();
+        });
+       
+      });
+    },
+    function(callback) {
+      if(!since) {
+        since = new Date().getTime() * 1000;
+        since -= (10 * 1000 * 1000);
+      }
+      since = Math.floor(since / 1000 / 1000);
+      log.debug('fetching since ' + since);
+
+      db.find({'date': {$gte: since}}, function(err, docs) {
+        docs = _.sortBy(docs, 'tid');
+        if(!docs || docs.length === 0)
+          return self.retry(self.getTrades, callback);
+        callback(null, docs);
+      });
+    }
+  ], function(err, result) {
+    if(err) return log.error(self.name, 'error: ' + err);
+    callback(result);
+  });
 }
 
 Trader.prototype.buy = function(amount, price, callback) {

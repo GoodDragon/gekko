@@ -62,12 +62,13 @@ if(config.normal && config.normal.enabled) {
 // trade information.
 // 
 var provider = config.watch.exchange.toLowerCase();
-if(provider === 'btce' || provider === 'bitstamp') {
-  // we can't fetch historical data from btce directly so we use bitcoincharts
+if(provider === 'bitstamp') {
+  // we can't fetch historical data from bitstamp directly so we use bitcoincharts
   // @link http://bitcoincharts.com/about/markets-api/
   config.watch.market = provider;
   provider = 'bitcoincharts';
 }
+
 var DataProvider = require('./exchanges/' + provider);
 var watcher = new DataProvider(config.watch);
 
